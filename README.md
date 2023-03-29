@@ -1,3 +1,3 @@
-# HousingPrice-prediction-with-PCA
+# Capital Asset Pricing Model with PCA
 
-Predictiig price for the houses by employing pca for feature extraction and  linear regression for prediction.
+ 
