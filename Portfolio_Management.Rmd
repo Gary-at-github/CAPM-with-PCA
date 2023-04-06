@@ -1,0 +1,127 @@
+---
+title: "Portfolio Management"
+author: "Group A"
+date: "2023-04-05"
+output: pdf_document
+---
+
+```{r}
+# Package names
+packages <- c("ggplot2","reshape2", "readxl", "dplyr", "tidyr", "alphavantager", "httr","jsonlite","tidyverse","pracma","quantmod","tidyquant","corrplot","ggfortify")
+
+# Install packages not yet installed
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+
+# Packages loading
+invisible(lapply(packages, library, character.only = TRUE))
+```
+
+```{r}
+
+# Define the stocks in the portfolio
+symbols <- c("AAPL","MSFT","AMZN","TSLA","IBM","GOOGL","INTC","ADBE","GS")
+
+```
+
+```{r}
+# Retrieve the data
+
+# Date: when the monthly return of the stock was recorded
+# stock: symbol of the stock
+# open: price of the stock at the beginning of the month
+# high: highest recorded price of the stock during the month
+# low:  lowest recorded price of the stock during the month
+# close: price of the stock at the end of the month
+# adjusted close: Difference in the closing price of the stock due to corporate actions, such as stock splits, dividends, or any other event.
+# Volume: Number of stocks or shares traded in a month
+
+ 
+api_key <- "UPN4ARLW17K30CVM"
+stocks <- list()
+for (symbol in symbols) {
+  url <- paste0("https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol=", symbol, "&apikey=", api_key, "&outputsize=full")
+  response <- GET(url)
+  Sys.sleep(15)  # Pause for 5 seconds before making the next API request
+  data <- fromJSON(rawToChar(response$content))$`Monthly Adjusted Time Series`
+  stock_data<- data.frame(Date = as.Date(names(data)),
+                          Symbol=symbol,
+                          Open = as.numeric(sapply(data, function(x) x["1. open"])),
+                          High = as.numeric(sapply(data, function(x) x["2. high"])),
+                          Low = as.numeric(sapply(data, function(x) x["3. low"])),
+                          Close = as.numeric(sapply(data, function(x) x["4. close"])),
+                          Adjusted_close = as.numeric(sapply(data, function(x) x["5. adjusted close"])),
+                          Volume = as.numeric(sapply(data, function(x) x["6. volume"]))
+                          )  
+   
+   stocks<-rbind(stocks,stock_data)
+   stock_data<- NULL
+  
+}
+stock_returns<- stocks[rev(1:nrow(stocks)),]
+
+
+ 
+```
+
+```{r}
+# Visualizations
+
+ 
+ 
+# Create a time series plot of the monthly returns of each stock
+ stock_returns %>% ggplot(  aes(x =  Date, y = Close , color =   Symbol)) +
+  geom_line() +
+  labs(title = "Daily Returns of Stocks", x = "Date", y = "Daily Returns") + 
+  facet_wrap(~Symbol) +theme_bw()
+
+# Create a heat map of the correlation coefficients
+corr_mat <- stock_returns %>% select(-Date,-Symbol) %>% cor
+corr_mat
+#corrplot(corr_mat,method = "circle", type="full",title = "")
+
+ggplot(data.frame(expand.grid(symbols, symbols), value = c(corr_mat))) +
+  geom_tile(aes( Var1, Var2, fill = value)) +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+# Create a box plot of the stock prices for each stock
+
+ stock_returns %>% ggplot(aes(x=Date,y= Close,color= Symbol)) + geom_boxplot() +theme_bw()
+```
+
+```{r}
+
+# Standardizing the market returns
+standardized_returns<- stock_returns %>% select(-Date,-Symbol) %>%  as.matrix() %>% scale(scale = TRUE) 
+# Applying pca on the standardized returns of the stocks
+pca <- prcomp( standardized_returns)
+summary(pca)
+```
+
+```{r}
+#  line plot of the eigenvalues (variance explained) of each principal component.
+
+eigen_values <- pca$sdev^2
+
+screeplot(pca ,type="b" )
+
+
+# Create loading plot
+
+autoplot(pca, data =  stock_returns, colour = 'Symbol',
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 4) 
+
+#This will create a scatter plot of the scores of each stock on the first two principal components, with the name of each stock labeled.
+
+
+# Create biplot
+plot(pca$x[,1], pca$x[,2], xlab="PC1", ylab="PC2", type="n")
+text(pca$x[,1], pca$x[,2], names(stock_data), cex=0.7)
+arrows(0, 0, pca$rotation[,1], pca$rotation[,2], length=0.1)
+
+```
